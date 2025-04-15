@@ -10,6 +10,7 @@ const queue = new FifoQueueAsync( \
 &nbsp; &nbsp; dequeueWorker=[optional] [default = null], \
 &nbsp; &nbsp; dequeueBatchSize=[optional] [default = 1], \
 &nbsp; &nbsp; dequeueDelay=[optional] [default = 10] \
+&nbsp; &nbsp; manualStop = [optional] [default = false] \
 );
 
 dequeueWorker = accepts a function that is called when auto-dequeue is executed \
@@ -18,9 +19,11 @@ Auto-dequeue is only executed in async mode.
 dequeueBatchSize = how many elements are returned when dequeued. \
 This applies for both sync and async mode.
 
-dequeueDelay = how many milliseconds of a minimum delay you want between \
+dequeueDelay = how many milliseconds of a minimum delay [ms] you want between \
 auto-dequeue worker executed.
 
+manualStop = if set to true, you have to manually stop autoDeque procedure, \
+if false, auto dequeue will stop automatically when queue is empty
 
 Sync mode: \
 &nbsp; &nbsp; enqueue: queue.enqueue([element]) \
@@ -51,3 +54,4 @@ Queue methods:
 - clear() // empties the queue
 - removeDequeueWorkerCallback() // removes dequeueWorker function
                                 // which turns off auto-dequeue/async mode
+- stopAutoDequeue() // stops auto dequeue procedure

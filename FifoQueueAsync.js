@@ -2,27 +2,30 @@
     FifoQueueAsync
 
     A First-In-First-Out Queue with Async support.
-    You can use it as a regular queue, or you can use it 
+    You can use it as a regular queue, or you can use it
     as an automated async queue.
 
     You can achieve async mode by setting up a dequeueWorker.
 
     const queue = new FifoQueueAsync(
-        dequeueWorker=[optional] [default = null], 
-        dequeueBatchSize=[optional] [default = 1], 
+        dequeueWorker=[optional] [default = null],
+        dequeueBatchSize=[optional] [default = 1],
         dequeueDelay=[optional] [default = 10]
+        manualStop = [optional] [default = false]
     );
 
     dequeueWorker = accepts a function that is called when auto-dequeue is executed
         Auto-dequeue is only executed in async mode.
-    
+
     dequeueBatchSize = how many elements are returned when dequeued.
         This applies for both sync and async mode.
-    
-    dequeueDelay = how many milliseconds of a minimum delay you want between 
+
+    dequeueDelay = how many milliseconds of a minimum delay you want between
         auto-dequeue worker executed.
 
-    
+    manualStop = if set to true, you have to manually stop autoDeque procedure,
+        if false, auto dequeue will stop automatically when queue is empty
+
     Sync mode:
         enqueue: queue.enqueue([element])
         enqueue: queue.enqueue([element])
@@ -33,7 +36,7 @@
         enqueue: queue.enqueue([element])
         enqueue: queue.enqueue([element])
         enqueue: queue.enqueue([element])
-        dequeue: queue.startAutoDequeue()     
+        dequeue: queue.startAutoDequeue()
 
     Once auto-dequeue begins, it will keep running until queue is empty.
 
@@ -51,54 +54,79 @@
     - clear() // empties the queue
     - removeDequeueWorkerCallback() // removes dequeueWorker function
                                     // which turns off auto-dequeue/async mode
-
+    - stopAutoDequeue() // stops auto dequeue procedure
 
 */
+
+class Node {
+    constructor(value) {
+        this.value = value;
+        this.next = null;
+    }
+}
+
 class FifoQueueAsync{
 
-    constructor(dequeueWorker = null, dequeueBatchSize = 1, dequeueDelay = 10) {
-        this.items = [];
-        this.front = 0;
-        this.rear = 0;
+    constructor(dequeueWorker = null, dequeueBatchSize = 1, dequeueDelay = 10, manualStop = false) {
+        this.head = null;
+        this.tail = null;
+        this.length = 0;
         this.dequeueWorkerCallback = dequeueWorker
         this.dequeueBatchSize = dequeueBatchSize
         this.dequeueDelay = dequeueDelay
+        this.manualStop = manualStop
     }
 
     // returns element to be dequeued next
     getDequeueElement() {
-        if (this.isEmpty()) {
+        if (this.length === 0) {
             return null;
         }
-        const item = this.items[this.front];
-        delete this.items[this.front];
-        this.front++;
-        return item;
+
+        const removedNode = this.head;
+
+        if (this.head === this.tail) {
+            // Only one item in the queue
+            this.tail = null;
+        }
+
+        this.head = this.head.next;
+        this.length--;
+
+        return removedNode.value;
     }
 
     // returns list of dequeued elements (depending on the set batch size)
     getDequeueElements(batchSize = null){
         let elements = []
-        const queueSize = this.size()
+        const queueSize = this.length
         let dequeueLimit = batchSize === null
-                            ? Math.min(this.dequeueBatchSize, queueSize) 
-                            : Math.min(batchSize, queueSize)
-    
+            ? Math.min(this.dequeueBatchSize, queueSize)
+            : Math.min(batchSize, queueSize)
+
         for(let i=dequeueLimit; i>0; i--){
             elements.push(this.getDequeueElement())
         }
 
         // reset pointers if empty
-        if (this.isEmpty()) {
+        if (this.length === 0) {
             this.clear()
         }
         return elements
     }
 
     // Add element to the queue
-    enqueue(element) {
-        this.items[this.rear] = element;
-        this.rear++;
+    enqueue(value) {
+        const newNode = new Node(value);
+        if (this.length === 0) {
+            this.head = newNode;
+            this.tail = newNode;
+        } else {
+            this.tail.next = newNode;
+            this.tail = newNode;
+        }
+
+        this.length++;
     }
 
     // Remove and return element from the queue
@@ -113,18 +141,27 @@ class FifoQueueAsync{
     // dequeue worker (calls a preset function and passes dequeued elements, and boolean if is empty)
     dequeueWorker(){
         if(typeof this.dequeueWorkerCallback === 'function'){
-            this.dequeueWorkerCallback(this.getDequeueElements(), this.isEmpty())
+            this.dequeueWorkerCallback(this.getDequeueElements(), this.length === 0)
         }
     }
 
     // start async dequeue but only if dequeueWorker is set
-    // function will keep executing until queue is empty
+    // function will keep executing until queue is empty (unless manualStop is set to true)
     startAutoDequeue(){
         if(this.dequeueWorkerCallback === null || typeof this.dequeueWorkerCallback !== 'function'){
             return false;
         }
 
-        if(!this.isEmpty()){
+        // manual stop is not set
+        if(!this.manualStop){
+            if(this.length !== 0){
+                this.dequeueWorker()
+
+                setTimeout(() => {
+                    this.startAutoDequeue()
+                }, this.dequeueDelay)
+            }
+        } else {
             this.dequeueWorker()
 
             setTimeout(() => {
@@ -138,75 +175,35 @@ class FifoQueueAsync{
         if (this.isEmpty()) {
             return null;
         }
-        return this.items[this.front];
+        return this.head.value;
     }
 
     // Check if queue is empty
     isEmpty() {
-        return this.front === this.rear;
+        return this.length === 0;
     }
 
     // Return queue size
     size() {
-        return this.rear - this.front;
+        return this.length;
     }
 
     // Clear the queue
     clear() {
-        this.items = [];
-        this.front = 0;
-        this.rear = 0;
+        this.head = null;
+        this.tail = null;
+        this.length = 0;
     }
 
     // sets dequeueWorkerCallback to null which turns off async mode
     removeDequeueWorkerCallback() {
         this.dequeueWorkerCallback = null;
     }
-}
 
-// TESTS
-function test(testAutoDequeue = true) {
-    function dequeueWorker(elements, isEmpty){
-        console.log(`Got elementes from the queue: ${elements} :: Is queue empty?: ${isEmpty}`)
+    // stop auto dequeue
+    stopAutoDequeue() {
+        this.manualStop = false
     }
-
-    const queue = new FifoQueueAsync(
-        dequeueWorker=dequeueWorker, 
-        dequeueBatchSize=11, 
-        dequeueDelay=500
-    );
-
-    if(testAutoDequeue){
-        for(let i = 0; i < 100; i++){
-            queue.enqueue(i)
-        }
-        console.log(`Queue size: ${queue.size()}`)
-        console.log(`First element to be dequeued: ${queue.peek()}`)
-        console.log('Starting dequeue worker')
-        queue.startAutoDequeue()
-    } else {
-        queue.clear()
-        let el
-        for(let i = 0; i < 3; i++){
-            queue.enqueue(i)
-        }
-        queue.removeDequeueWorkerCallback()
-        el = queue.dequeue()
-        console.log(`Dequeued element: ${el}`)
-        el = queue.dequeue()
-        console.log(`Dequeued element: ${el}`)
-        el = queue.dequeue()
-        console.log(`Dequeued element: ${el}`)
-        el = queue.dequeue()
-        console.log(`Dequeued element: ${el}`)
-
-        for(let i = 0; i < 3; i++){
-            queue.enqueue(i)
-        }
-        queue.removeDequeueWorkerCallback()
-        el = queue.dequeue(4)
-        console.log(`Dequeued elements: ${el}`)
-    } 
 }
 
-test(true)
+module.exports = FifoQueueAsync;
